@@ -1,0 +1,451 @@
+---
+title: "Cacao Data Analysis"
+author: "Martha Zuluaga"
+date: "1/27/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Environment
+```{r environ, echo=TRUE, message=FALSE, warning=FALSE}
+
+library(timeSeries)
+library(reshape2)
+library(cluster)
+library(gplots)
+library(ggfortify)
+library(RColorBrewer)
+library(ggplot2)
+library(tidyverse)
+library(base)
+library(graphics)
+library(stats)
+library(fBasics)
+library(pvclust)
+library(pca3d)
+library(randomForest)
+library(varSelRF)
+library(e1071)
+library(VennDiagram)
+library(googlesheets4)
+```
+
+# 2. Call the data
+```{r}
+df.autoscale <- read.csv("Data/df_autoscale.csv") %>% 
+  select(-1) %>% as.matrix()
+metaData <- read.csv("Data/metaData.csv") %>% 
+  select(-1)
+```
+
+# Non-Supervised methods
+First, we will start by doing a descriptive analysis. We will perform a PCA of all data colored by the time of treatment and region. Then we will look at the subsetting data by region and grouped by time as well as the subset data by time and colored by region. The dataset used in this section is already normalized, transformed, and scaled. 
+
+## Principal component analysis
+```{r}
+
+pca.data <- cbind(metaData, df.autoscale)
+autoplot(prcomp(df.autoscale))
+```
+
+```{r}
+autoplot(prcomp(df.autoscale), data = pca.data, colour = 'Time')
+```
+
+Treatment 1 (72 h) has more explained variance in PC1. T2 and T4 (96, 144 h) presents more explained variance in PC2. T3 (120 h) has a low variability in both PC. 
+The metabolomic profile of treatment 1 presents more variation (unsteadiness) than the other profiles, while  T3 (120 h) presents the lowest variation exhibit a more stable metabolomic profile. The treatments seem to be separated from each other. We could infer that the time of fermentation has a great influence on the metabolomic profile.
+
+Let's see with frames ;-)
+```{r}
+autoplot(prcomp(df.autoscale), data = pca.data, colour = 'Time', frame = TRUE, frame.type = 'norm')
+```
+
+Even though the frame of 72h is overlapping 96 and 120h, 72h has a considerable variability. Meanwhile, The other treatments performed a good separation.
+
+```{r}
+autoplot(prcomp(df.autoscale), data = pca.data, colour = 'Region')
+```
+
+When the data projection is colored by region, the clusters are partially overlapped. For this,  we could infer that the region has a weak influence on the explained variance or less influence than the fermentation time. The metabolomic profile has a poor distinction by the region. The high genetic variability in each region can explain it.
+
+Let's see with frame ;-)
+```{r}
+autoplot(prcomp(df.autoscale), data = pca.data, colour = 'Region', frame = TRUE, frame.type = 'norm')
+```
+
+
+# Regions comparison
+
+## Subseting the data by Time of fermentation
+
+### Fermentation time: 72 h
+```{r}
+T.72 <- pca.data %>% 
+  filter(Time == "72h") %>% 
+  select(-c(1:3))
+autoplot(prcomp(T.72), data = pca.data, colour = 'Region', frame = TRUE, frame.type = 'norm')
+```
+
+
+
+### Fermentation time: 96 h
+```{r}
+T.96 <- pca.data %>% 
+  filter(Time == "96h") %>% 
+  select(-c(1:3))
+autoplot(prcomp(T.96), data = pca.data, colour = 'Region', frame = TRUE, frame.type = 'norm')
+```
+
+
+### Fermentation time: 120 h
+```{r}
+T.120 <- pca.data %>% 
+  filter(Time == "120h")
+
+autoplot(prcomp(T.120[ , -c(1:3)]), data = T.120, colour = 'Region', frame = TRUE, frame.type = 'norm')
+```
+
+When the data is subset by the fermentation's time, it is possible to visualize the differences among the regions.
+
+### Fermentation time: 144 h
+```{r}
+T.144 <- pca.data %>% 
+  filter(Time == "144h")
+
+autoplot(prcomp(T.144[ , -c(1:3)]), data = T.144, colour = 'Region', frame = TRUE, frame.type = 'norm')
+```
+
+When the data is subset by the fermentation's time, it is possible to visualize the differences among the regions.
+
+
+
+# Fermentation time comparison
+
+## Subsetting by region
+### 1. Bajo Calima
+```{r}
+Bcal <- pca.data %>% 
+  filter(Region == "Bcal") 
+
+autoplot(prcomp(Bcal[ , -c(1:3)]), data = Bcal, colour = 'Time', frame = TRUE, frame.type = 'norm')
+```
+
+
+### 2. Cisneros
+```{r}
+Cis <- pca.data %>% 
+  filter(Region == "Cis") 
+
+autoplot(prcomp(Cis[ , -c(1:3)]), data = Cis, colour = 'Time', frame = TRUE, frame.type = 'norm')
+```
+
+### 3. Sabaletas
+
+```{r}
+Sab <- pca.data %>% 
+  filter(Region == "Sab") 
+
+autoplot(prcomp(Sab[ , -c(1:3)]), data = Sab, colour = 'Time', frame = TRUE, frame.type = 'norm')
+```
+
+
+
+# Hierarchical cluster Analysis
+
+The HCA was performed to find the associativity between the experimental groups and determine the grouping levels.
+
+```{r}
+metaData.1  <- metaData %>% 
+  unite(name, Region, Time )
+
+HCA.data <- df.autoscale
+rownames(HCA.data) <- metaData.1[,2]
+distEucl<-dist(HCA.data)
+hclust(distEucl)
+```
+
+```{r}
+distcorr<-as.dist(1-cor(t(HCA.data)))
+hclust(distcorr)
+```
+
+```{r}
+plot(hclust(distEucl))
+```
+
+
+```{r}
+plot(hclust(distcorr))
+```
+
+
+### HCA Bootstraping
+
+The Approximately Unbiased P-value (AU-P in red) and Bootstrap Probability value (BP-P in green), indicative of how strongly the cluster is supported by the data
+```{r}
+HCA_boot_t <- pvclust(t(HCA.data), method.hclust = "average", method.dist = "correlation", nboot = 1000)
+plot(HCA_boot_t)
+```
+
+
+```{r}
+table <- pvpick(HCA_boot_t, alpha=0.9, pv="au", type="geq", max.only=TRUE)
+table
+```
+The HCA allowed us to visualize the clusters generated with the data. The data could be differentiated by Region and Time.
+
+# Supervised methods
+A OPLS-DA was performed to determine the potential biomarker metabolites of the fermentation process.
+
+## OPLS-DA
+It would be interesting to determine the signals that discriminate between the treatments (T1/T2, T1/T3 y T2/T3). For this I propose an OPLS-DA between each pair. 
+
+### Call the library
+```{r}
+  # Run just one time
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+   # install.packages("BiocManager")
+#BiocManager::install("ropls")
+library(ropls)
+```
+
+### Data subsetting
+```{r}
+T1.T2 <- pca.data %>% 
+  filter(Time %in% c("72h", "96h"))
+write.csv(T1.T2, file = "Data/T1T2.csv")
+
+T1.T3 <- pca.data %>% 
+  filter(Time %in% c("72h","120h"))
+write.csv(T1.T3, file = "Data/T1T3.csv")
+
+T1.T4 <- pca.data %>% 
+  filter(Time %in% c("72h","144h"))
+write.csv(T1.T4, file = "Data/T1T4.csv")
+
+T2.T3 <- pca.data %>% 
+  filter(Time %in% c("96h","120h"))
+write.csv(T2.T3, file = "Data/T2T3.csv")
+
+T2.T4 <- pca.data %>% 
+  filter(Time %in% c("96h","144h"))
+write.csv(T2.T4, file = "Data/T2T4.csv")
+
+T3.T4 <- pca.data %>% 
+  filter(Time == c("120h","144h"))
+write.csv(T3.T4, file = "Data/T3T4.csv")
+
+```
+
+### OPLS-DA T1/T2
+```{r}
+T1.T2 <- read.csv("Data/T1T2.csv")
+oplsda.T1T2 <- opls(T1.T2[,-c(1:4)], T1.T2[, "Time"], algoC = "default", na.rm = T, scaleC = "none",predI = 1, orthoI = NA,)
+
+```
+
+## Model summary
+```{r}
+getSummaryDF(oplsda.T1T2)
+```
+
+## Variable Importance Proyection
+```{r}
+VIP.T1T2 <- getVipVn(oplsda.T1T2)
+VIPT1T2 <-head(sort(VIP.T1T2, decreasing = TRUE), 20)
+write.csv(VIPT1T2, file = "Data/VIPT1T2.csv")
+```
+
+### OPLS-DA T1/T3
+```{r}
+T1.T3 <- read.csv("Data/T1T3.csv")
+oplsda.T1T3 <- opls(T1.T3[,-c(1:4)], T1.T3[, "Time"], algoC = "default", na.rm = T, scaleC = "none",predI = 1, orthoI = NA,)
+```
+
+```{r}
+getSummaryDF(oplsda.T1T3)
+```
+
+```{r}
+VIP.T1T3 <- getVipVn(oplsda.T1T3)
+VIPT1T3 <- head(sort(VIP.T1T3, decreasing = TRUE), 20)
+write.csv(VIPT1T3, file = "Data/VIPT1T3.csv")
+```
+
+### OPLS-DA T1/T4
+```{r}
+T1.T4 <- read.csv("Data/T1T4.csv")
+oplsda.T1T4 <- opls(T1.T4[,-c(1:4)], T1.T4[, "Time"], algoC = "default", na.rm = T, scaleC = "none",predI = 1, orthoI = NA,)
+```
+
+```{r}
+getSummaryDF(oplsda.T1T4)
+```
+
+```{r}
+VIP.T1T4 <- getVipVn(oplsda.T1T4)
+VIPT1T4 <- head(sort(VIP.T1T4, decreasing = TRUE), 20)
+write.csv(VIPT1T4, file = "Data/VIPT1T4.csv")
+```
+
+
+### OPLS-DA T2/T3
+```{r}
+T2.T3 <- read.csv("Data/T2T3.csv")
+oplsda.T2T3 <- opls(T2.T3[,-c(1:4)], T2.T3[, "Time"], algoC = "default", na.rm = T, scaleC = "none",predI = 1, orthoI = NA,)
+```
+
+```{r}
+getSummaryDF(oplsda.T2T3)
+```
+
+```{r}
+VIP.T2T3 <- getVipVn(oplsda.T2T3)
+VIPT2T3 <- head(sort(VIP.T2T3, decreasing = TRUE), 20)
+write.csv(VIPT2T3, file = "Data/VIPT2T3.csv")
+```
+
+### OPLS-DA T2/T4
+```{r}
+T2.T4 <- read.csv("Data/T2T4.csv")
+oplsda.T2T4 <- opls(T2.T4[,-c(1:4)], T2.T4[, "Time"], algoC = "default", na.rm = T, scaleC = "none",predI = 1, orthoI = NA,)
+```
+
+```{r}
+getSummaryDF(oplsda.T2T4)
+```
+
+```{r}
+VIP.T2T4 <- getVipVn(oplsda.T2T4)
+VIPT2T4 <- head(sort(VIP.T2T4, decreasing = TRUE), 20)
+write.csv(VIPT2T4, file = "Data/VIPT2T4.csv")
+```
+
+
+### OPLS-DA T3/T4
+```{r}
+T3.T4 <- read.csv("Data/T3T4.csv")
+oplsda.T3T4 <- opls(T3.T4[,-c(1:4)], T3.T4[, "Time"], algoC = "default", na.rm = T, scaleC = "none",predI = 1, orthoI = NA,)
+```
+
+```{r}
+getSummaryDF(oplsda.T3T4)
+```
+
+```{r}
+VIP.T3T4 <- getVipVn(oplsda.T3T4)
+VIPT3T4 <- head(sort(VIP.T3T4, decreasing = TRUE), 20)
+write.csv(VIPT3T4, file = "VIPT3T4.csv")
+```
+
+
+############
+
+# OPLS-DA By region and time 
+
+```{r}
+Bcal.T1T2 <- pca.data %>%
+  dplyr::filter(Region %in% "Bcal",
+                Time %in% c("72h", "96h"))
+write.csv(Bcal.T1T2, file = "Data/Bcal_T1T2.csv")
+```
+
+```{r}
+Bcal.T1T2 <- read.csv(file = "Data/Bcal_T1T2.csv")
+oplsda.Bcal.T1T2 <- opls(Bcal.T1T2[,-c(1:4)], Bcal.T1T2[, "Time"], algoC = "default", na.rm = T, scaleC = "none",predI = 1, orthoI = NA,)
+```
+
+```{r}
+VIP.Bcal.T1T2 <- getVipVn(oplsda.Bcal.T1T2)
+VIPBcal.T1T2 <- head(sort(VIP.Bcal.T1T2, decreasing = TRUE), 20)
+write.csv(VIPBcal.T1T2, file = "Data/VIPBcalT1T2.csv")
+```
+
+
+# Multiple comparison all region by time
+
+```{r}
+plsda.data <- pca.data %>% 
+  dplyr::select(-Region)
+```
+
+```{r}
+plsda.time <- opls(plsda.data[,-c(1:2)], plsda.data[, "Time"], algoC = "default", na.rm = T, scaleC = "none",predI = NA, orthoI = 0,)
+```
+
+```{r}
+VIP.plsdaTime <- getVipVn(plsda.time)
+VIP_PLSDA <- sort(VIP.plsdaTime, decreasing = TRUE)
+write.csv(VIP_PLSDA, file = "Data/VIP_PLSDA_Time.csv")
+```
+
+# 72h Vs all treatments
+```{r}
+T72_A <- read.csv("Data/Time72_All.csv")
+oplsda.72 <- opls(T72_A[,-c(1:3)], T72_A[, "Treat"], algoC = "default", na.rm = T, scaleC = "none",predI = 1, orthoI = NA,)
+```
+```{r}
+VIP.T72_A <- getVipVn(oplsda.72 )
+VIP_T72_A <- sort(VIP.T72_A, decreasing = TRUE)
+write.csv(VIP_T72_A, file = "Data/VIP_T72_A.csv")
+```
+
+
+# 96h Vs all treatments
+```{r}
+T96_A <- read.csv("Data/Time96_All.csv")
+oplsda.96 <- opls(T96_A[,-c(1:3)], T96_A[, "Treat"], algoC = "default", na.rm = T, scaleC = "none",predI = 1, orthoI = NA,)
+```
+
+```{r}
+VIP.T96_A <- getVipVn(oplsda.96 )
+VIP_T96_A <- sort(VIP.T96_A, decreasing = TRUE)
+write.csv(VIP_T96_A, file = "Data/VIP_T96_A.csv")
+```
+
+# 120h Vs all treatments
+```{r}
+T120_A <- read.csv("Data/Time120_All.csv")
+oplsda.120 <- opls(T120_A[,-c(1:3)], T120_A[, "Treat"], algoC = "default", na.rm = T, scaleC = "none",predI = 1, orthoI = NA,)
+```
+
+```{r}
+VIP.T120_A <- getVipVn(oplsda.120 )
+VIP_T120_A <- sort(VIP.T120_A, decreasing = TRUE)
+write.csv(VIP_T120_A, file = "Data/VIP_T120_A.csv")
+```
+
+
+# 144h Vs all treatments
+```{r}
+T144_A <- read.csv("Data/Time144_All.csv")
+oplsda.144 <- opls(T144_A[,-c(1:3)], T144_A[, "Treat"], algoC = "default", na.rm = T, scaleC = "none",predI = 1, orthoI = NA,)
+```
+
+```{r}
+VIP.T144_A <- getVipVn(oplsda.144 )
+VIP_T144_A <- sort(VIP.T144_A, decreasing = TRUE)
+write.csv(VIP_T144_A, file = "Data/VIP_T144_A.csv")
+```
+
+PLSDA for VoC
+```{r}
+VoC <- read.csv("Data/DatosVOCBuenaventura.csv")
+```
+
+
+```{r}
+plsda.VoC <- opls(VoC[,-c(1:3)], VoC[, "Time"], algoC = "default", na.rm = T, scaleC = "pareto",predI = NA, orthoI = 0)
+```
+
+```{r}
+VIP.plsda.VoC <- getVipVn(plsda.VoC)
+VIP_plsda.VoC <- sort(VIP.plsda.VoC, decreasing = TRUE, 20)
+write.csv(VIP_plsda.VoC, file = "Data/VIP_plsda.VoC.csv")
+```
+
